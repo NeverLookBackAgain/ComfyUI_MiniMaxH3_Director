@@ -136,6 +136,7 @@ class MiniMaxH3DirectorRefine:
                         "default": "inherit",
                         "tooltip": (
                             "二采种子从哪来。"
+                            "cached_first_pass = 跟随各段缓存的一采 seed，支持不同段不同 seed。"
                             "inherit = 跟随导演台（一采和二采用同一个 seed）。"
                             "offset = 导演台 seed+1（二采和一采错开一号）。"
                             "independent = 独立种子：只用下方 seed / 生成后控制，"

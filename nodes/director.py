@@ -236,7 +236,14 @@ class MiniMaxH3Director:
         # Do not return NaN: that would re-run every Director queue even when
         # confirm_first_pass is off. Linked Refine is None here, so fingerprint
         # the .pre cache files that only the confirmation hold writes.
-        del kwargs
+        import json
+        try:
+            config = json.loads(kwargs.get("timeline_data") or "{}").get("lucasExecution", {})
+        except (TypeError, ValueError):
+            config = {}
+        if config.get("enabled"):
+            from ..director.segment_cache import execution_cache_disk_signature
+            return execution_cache_disk_signature(unique_id)
         from ..director.segment_cache import first_pass_cache_disk_signature
 
         return first_pass_cache_disk_signature(unique_id)

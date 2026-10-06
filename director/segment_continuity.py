@@ -1771,18 +1771,23 @@ def concat_continuous_chunks(
         return cat_frames_variable_size(chunks)
     fixed: list[torch.Tensor] = [chunks[0]]
     for i in range(1, len(chunks)):
-        left = _unfreeze_held_tail(fixed[-1])
-        if CONTINUITY_HOLD_POP_ON_TAIL:
-            left = _break_hold_pop_window(left, from_end=True)
-        body = _break_hold_pop_window(chunks[i], from_end=False)
-        if float(CONTINUITY_SPIKE_WEIGHT) > 0:
-            body = _ease_opening_spikes(body)
-        body = _soften_body0_toward_prev(body, left)
-        body = _additive_opening_luma(body, left)
-        left, body = _micro_seam_bridge(left, body)
+        left, body = prepare_continuity_pair(fixed[-1], chunks[i])
         fixed[-1] = left
         fixed.append(body)
     return cat_frames_variable_size(fixed)
+
+
+def prepare_continuity_pair(left, body):
+    """Shared seam processing for tensor and bounded-memory video exports."""
+    left = _unfreeze_held_tail(left)
+    if CONTINUITY_HOLD_POP_ON_TAIL:
+        left = _break_hold_pop_window(left, from_end=True)
+    body = _break_hold_pop_window(body, from_end=False)
+    if float(CONTINUITY_SPIKE_WEIGHT) > 0:
+        body = _ease_opening_spikes(body)
+    body = _soften_body0_toward_prev(body, left)
+    body = _additive_opening_luma(body, left)
+    return _micro_seam_bridge(left, body)
 
 
 def apply_cached_segment_continuity(

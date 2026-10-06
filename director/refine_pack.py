@@ -14,7 +14,7 @@ from ..lib.image_prep import MINIMAX_CANVAS_STRIDE, ensure_minimax_canvas
 MMX_DIR_REFINE = "MMX_DIR_REFINE"
 
 REFINE_MODES = ("refine", "upscale", "latent_upscale")
-SEED_MODES = ("inherit", "offset", "independent")
+SEED_MODES = ("inherit", "offset", "independent", "cached_first_pass")
 INDEPENDENT_SEED_MODE = "independent"
 UPSCALE_METHODS = ("lanczos", "nvidia_rtx_vsr", "h3_latent")
 MAX_REFINE_PASSES = 9999
@@ -636,6 +636,8 @@ def refine_report_line(plan) -> str | None:
             seed_note = f", seed={int(pack.get('seed') or 0)} (independent)"
         elif seed_mode == "offset":
             seed_note = ", seed offset"
+        elif seed_mode == "cached_first_pass":
+            seed_note = ", 跟随各段一采 seed"
         else:
             seed_note = ""
         line = (

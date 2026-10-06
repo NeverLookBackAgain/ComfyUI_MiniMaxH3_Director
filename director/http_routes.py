@@ -534,6 +534,8 @@ async def minimax_first_pass_cache_status(request):
         from .plan import build_director_plan
         from .segment_cache import inspect_first_pass_cache
 
+        from .execution_modes import normalize_execution_timeline
+        timeline_data = normalize_execution_timeline(str(timeline_data))
         plan = build_director_plan(
             str(timeline_data),
             global_task_type=str(body.get("task_type") or ""),
@@ -571,9 +573,18 @@ async def minimax_first_pass_cache_status(request):
         witness = external_witness_from_timeline_data(timeline_data)
         if witness:
             plan.external_groups_witness = witness
-        return web.json_response(
-            inspect_first_pass_cache(node_id, plan, external_groups=witness)
-        )
+        from .face_refine.pack import normalize_face_refine_pack
+        from .execution_modes import configure_execution, preflight, stamp_cached_seeds
+        plan.face_refine = normalize_face_refine_pack(body.get("face_refine"))
+        if plan.face_refine and (body.get("face_refine") or {}).get("has_sigmas_tensor"):
+            plan.face_refine["has_sigmas_tensor"] = True
+        configure_execution(plan)
+        stamp_cached_seeds(node_id, plan)
+        check = preflight(plan, node_id, metadata_only=True)
+        result = inspect_first_pass_cache(node_id, plan, external_groups=witness)
+        if check:
+            result["execution"] = check
+        return web.json_response(result)
     except Exception as exc:
         log.warning("MiniMax H3 Director first-pass cache inspection failed: %s", exc)
         return web.json_response(

@@ -90,7 +90,7 @@ const ASPECT_CHOICES = new Set([
 ]);
 
 const UPSCALE_METHOD_VALUES = new Set(["lanczos", "nvidia_rtx_vsr", "h3_latent"]);
-const SEED_MODE_VALUES = new Set(["inherit", "offset", "independent"]);
+const SEED_MODE_VALUES = new Set(["inherit", "offset", "independent", "cached_first_pass"]);
 const SAMPLER_HINTS = new Set([
     "euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral",
     "lms", "dpm_fast", "dpm_adaptive", "dpmpp_2s_ancestral", "dpmpp_sde",
@@ -559,7 +559,7 @@ function sortDiffKeys(keys) {
     });
 }
 
-function cacheStatusPayload(director, refine) {
+export function cacheStatusPayload(director, refine) {
     try {
         director?._minimaxEditor?._writeTimelineWidget?.();
     } catch {
@@ -594,6 +594,7 @@ function cacheStatusPayload(director, refine) {
         selflift: collectSelfLiftWitness(director),
         semantic_bridge: collectSemanticBridgeWitness(director),
         refine: collectRefineWitness(refine),
+        face_refine: director._lucasFaceWitness?.() || null,
     };
 }
 
@@ -610,6 +611,15 @@ function renderCacheStatus(node, data, kind = "normal") {
     ui.body.style.color = colors[kind] || colors.normal;
     if (typeof data === "string") {
         ui.body.textContent = data;
+        return;
+    }
+    if (data?.execution) {
+        const e = data.execution;
+        ui.body.textContent = [
+            `执行模式：${e.label}`,
+            `执行条件：${e.can_execute ? "通过" : e.errors.join("；")}`,
+            ...e.segments.map((r) => `片段 ${r.index + 1}${r.selected ? "（选中）" : ""} · 一采 seed=${r.seed ?? "无缓存"} · ${r.state}`),
+        ].join("\n");
         return;
     }
     const total = Number(data?.segment_total || 0);
@@ -688,6 +698,7 @@ function cacheStatusSelectionError(timelineData) {
     if (!timelineData || typeof timelineData !== "string") return "";
     try {
         const timeline = JSON.parse(timelineData);
+        if (timeline?.lucasExecution?.enabled && ["merge_first", "merge_refine"].includes(timeline.lucasExecution.mode)) return "";
         const enabled = Boolean(timeline?.runSelectEnabled ?? timeline?.run_select_enabled);
         const segments = Array.isArray(timeline?.segments) ? timeline.segments : [];
         const selection = timeline?.runSelection ?? timeline?.run_selection;

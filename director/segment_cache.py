@@ -229,6 +229,9 @@ def _segment_identity_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[
             else CONTINUITY_PIPELINE_ID
         ),
     }
+    if getattr(seg, "loras", None):
+        from .segment_loras import normalize_lora_rows
+        payload["segment_loras"] = normalize_lora_rows(seg.loras)
     if plan.continuity_enabled and bool(getattr(plan, "continuity_keep_tail", True)):
         payload["continuity_keep_tail"] = True
     witness = getattr(plan, "external_groups_witness", None)
@@ -254,7 +257,7 @@ def first_pass_cache_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[s
     linked = bool(sigmas) or bool(getattr(plan, "sample_sigmas_linked", False))
     fp.update({
         "kind": "first_pass",
-        "seed": int(getattr(plan, "sample_seed", 0) or 0),
+        "seed": int(getattr(plan, "segment_seeds", {}).get(seg.index, getattr(plan, "sample_seed", 0)) or 0),
         "cfg": round(float(getattr(plan, "sample_cfg", 1.0) or 1.0), 6),
         "sampler": str(getattr(plan, "sample_sampler", "") or ""),
         "shift_video": round(float(getattr(plan, "sample_shift_video", 12.0) or 12.0), 6),
@@ -275,6 +278,10 @@ def first_pass_cache_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[s
     from .semantic_bridge import semantic_bridge_fingerprint
 
     fp.update(semantic_bridge_fingerprint(plan))
+    from .execution_modes import model_witness_hash
+    model_hash = model_witness_hash(plan, "first")
+    if model_hash:
+        fp["first_model_witness"] = model_hash
     return fp
 
 
@@ -293,6 +300,24 @@ def segment_cache_fingerprint(seg: SegmentPlan, plan: DirectorPlan) -> dict[str,
     from .semantic_bridge import semantic_bridge_fingerprint
 
     fp.update(semantic_bridge_fingerprint(plan))
+    if getattr(plan, "execution", None):
+        # The old final fingerprint omitted all first sampling knobs. Track the
+        # actual first latent version as well, so even a same-seed re-roll expires it.
+        import hashlib
+        first = first_pass_cache_fingerprint(seg, plan)
+        root = Path(folder_paths.get_output_directory()) / "minimax_seg_cache" / str(getattr(plan, "execution_node_id", ""))
+        latent = root / f"seg_{seg.index:04d}.pre.av.pt"
+        try:
+            st = latent.stat()
+            version = [st.st_mtime_ns, st.st_size]
+        except OSError:
+            version = None
+        from .execution_modes import model_witness_hash
+        if plan.refine and model_witness_hash(plan, "second"):
+            fp["refine_model_witness"] = model_witness_hash(plan, "second")
+        if plan.face_refine and model_witness_hash(plan, "face"):
+            fp["fr_model_witness"] = model_witness_hash(plan, "face")
+        fp["lucas_first_pass"] = hashlib.sha256(json.dumps([first, version], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return fp
 
 
@@ -933,6 +958,10 @@ def save_first_pass_cache(
         if isinstance(frames, torch.Tensor) and frames.numel() > 0:
             payload = _frames_to_disk(frames)
             _store_segment_frames(root, idx, payload, first_pass=True, plan=plan)
+        elif getattr(plan, "execution", None):
+            # A new latent without a pixel decode must never inherit old pixels.
+            _drop_legacy_frames(root, idx, first_pass=True)
+            _drop_ffv1_frames(root, idx, first_pass=True)
         if isinstance(low_carry, dict) and "samples" in low_carry:
             cpu_low = _av_latent_to_cpu(low_carry)
             _write_via_temp(low_path, lambda p: torch.save(cpu_low, p))
@@ -1060,7 +1089,8 @@ def load_first_pass_cache(
             and _plan_uses_external_groups(plan)
             and not has_external_marker(stored)
         )
-        if not isinstance(stored, dict) or stored != expected or missing_external:
+        from .execution_modes import first_fingerprint_matches
+        if not first_fingerprint_matches(stored, expected) or missing_external:
             if isinstance(stored, dict) and _reject_source_stale(
                 stored, expected, seg_index=idx, quiet=True,
             ):
@@ -1742,3 +1772,65 @@ def clear_segment_cache(node_id: str | None, kind: str = "final") -> int:
     if removed:
         log.info("Cleared %s cache for node %s (%d file(s)).", kind, node_id, removed)
     return removed
+
+
+def save_first_pass_frames(node_id, seg, plan, frames):
+    root = _cache_root(node_id) if node_id else None
+    if root is not None:
+        _store_segment_frames(root, seg.index, _frames_to_disk(frames), first_pass=True, plan=plan)
+
+
+def load_refine_av_cache(node_id, seg, plan):
+    """Reuse the sampled second latent when only face parameters changed.
+
+    The final AV payload is saved before face pixels are stitched, so it remains
+    an independent second-pass source. First-source and all refine keys stay strict.
+    """
+    if not node_id or not getattr(plan, "execution", None):
+        return None
+    root = _cache_root(node_id)
+    if root is None:
+        return None
+    def without_face(fp):
+        return {k: v for k, v in fp.items() if k != "face_refine" and not k.startswith("fr_")}
+    try:
+        stored = json.loads((root / f"seg_{seg.index:04d}.meta.json").read_text(encoding="utf-8"))
+        if not stored.get("refine") or without_face(stored) != without_face(segment_cache_fingerprint(seg, plan)):
+            return None
+        payload = torch.load(root / f"seg_{seg.index:04d}.av.pt", map_location="cpu", weights_only=False)
+        return payload if isinstance(payload, dict) and "samples" in payload else None
+    except Exception as exc:
+        log.debug("Segment %d second latent cache skipped: %s", seg.index + 1, exc)
+        return None
+
+
+def execution_cache_disk_signature(node_id):
+    """Observe first and final updates/deletions for opt-in merge/cache workflows."""
+    if not node_id:
+        return ""
+    root = Path(folder_paths.get_output_directory()) / "minimax_seg_cache" / str(node_id)
+    if not root.is_dir():
+        return ""
+    parts = []
+    for path in sorted(root.glob("seg_*.*")):
+        try:
+            st = path.stat()
+            parts.append(f"{path.name}:{st.st_mtime_ns}:{st.st_size}")
+        except OSError:
+            continue
+    return "|".join(parts)
+
+
+def update_first_pass_export_handoff(node_id, seg, export_frames):
+    """Keep whole-first merge lengths aligned after a successor trims its pin seam."""
+    root = _cache_root(node_id) if node_id else None
+    if root is None:
+        return
+    path = root / f"seg_{seg.index:04d}.pre.handoff.json"
+    try:
+        handoff = json.loads(path.read_text(encoding="utf-8"))
+        handoff["export_frames"] = int(export_frames)
+        text = json.dumps(handoff, ensure_ascii=False, sort_keys=True)
+        _write_via_temp(path, lambda p: p.write_text(text, encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return

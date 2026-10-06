@@ -237,6 +237,8 @@ def prepare_director_plan(
             ref_max_size=ref_max_size,
         )
 
+    from ..director.execution_modes import normalize_execution_timeline
+    timeline_data = normalize_execution_timeline(timeline_data)
     task_key, ext_groups, family = validate_external_group_inputs(
         task_type=task_type,
         i2v_groups=i2v_groups,
@@ -265,6 +267,8 @@ def prepare_director_plan(
         plan = _attach_semantic_bridge(plan, semantic_bridge)
         plan = _attach_refine(plan, refine)
         plan = _attach_face_refine(plan, face_refine)
+        from ..director.execution_modes import configure_execution
+        plan = configure_execution(plan)
         log.info(
             "MiniMax H3 Director: external %s groups × %d (task=%s) | %s",
             family,
@@ -294,6 +298,8 @@ def prepare_director_plan(
     plan = _attach_semantic_bridge(plan, semantic_bridge)
     plan = _attach_refine(plan, refine)
     plan = _attach_face_refine(plan, face_refine)
+    from ..director.execution_modes import configure_execution
+    plan = configure_execution(plan)
     log.info(plan_summary(plan).replace("\n", " | "))
     return plan
 
@@ -442,6 +448,14 @@ def finalize_director_outputs(
     export_pre_face_refine: bool = False,
     block_final_images: bool = False,
 ):
+    from ..director.execution_stream_merge import StreamMergeResult
+    if isinstance(combined, StreamMergeResult):
+        # The full video is already saved. Never send poster frames or a lazy
+        # non-tensor through IMAGE, where downstream nodes could re-materialize it.
+        blocked = ExecutionBlocker(None)
+        return {"ui": {"images": [combined.saved, *combined.additional_saved], "animated": (True,)},
+                "result": (blocked, [combined.audio], float(plan.frame_rate or 24),
+                           combined.frame_count, blocked, report, blocked, blocked)}
     is_batch = is_prompt_batch_timeline(plan.raw, plan.global_task_key)
     export_segments = plan.export_mode == "segments"
     video_batch = is_video_batch_task_key(plan.global_task_key)
@@ -673,4 +687,8 @@ def finalize_director_outputs(
             "请从 images_pre_refine 查看或保存一采；再次 Queue 完成二采后 images 才会输出。"
         )
         images_out = ExecutionBlocker(None)
+    from ..director.execution_modes import output_first
+    execution = getattr(plan, "execution", None)
+    if not output_first(plan) or (execution and execution["mode"] in {"first", "merge_first"}):
+        pre_refine_out = ExecutionBlocker(None)
     return images_out, audio_out, fps_out, frame_count, source_images_out, report, pre_refine_out, pre_face_out
