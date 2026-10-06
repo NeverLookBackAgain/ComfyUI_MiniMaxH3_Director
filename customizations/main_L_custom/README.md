@@ -39,4 +39,4 @@ The source study measured three optimized repeats per five-segment generation mo
 
 For this snapshot, four workflow JSONs and their link endpoints were checked, runtime Python parsed, and the updated Director syntax checked. No new GPU generation was submitted. The first-pass TE and R3 component quality had human acceptance; full-combination audio and visual equivalence remains subject to human review.
 
-Upstream AIMixer `a8f57b8` is not merged because the preflight found a `director/plan.py` conflict. Proposed publication target: `NeverLookBackAgain/ComfyUI_MiniMaxH3_Director`, branch `ComfyUI_MiniMaxH3_Director_Lucas_Custom`.
+Upstream AIMixer `a8f57b8` was merged on 2026-10-07. The `director/plan.py` import conflict was resolved by retaining local `resolve_video_path` and upstream `normalize_lora_rows`. Local metadata-only cache inspection and all three memory scheduling changes remain. No new GPU generation or UI regression was run for this merge. Proposed publication target: `NeverLookBackAgain/ComfyUI_MiniMaxH3_Director`, branch `ComfyUI_MiniMaxH3_Director_Lucas_Custom`.

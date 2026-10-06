@@ -4,7 +4,18 @@
   "push_repository": "https://github.com/NeverLookBackAgain/ComfyUI_MiniMaxH3_Director",
   "director_base": "f0062e0d634022d0078de24577a68d41190bdedd",
   "core_base": "daeb5e53681e2b10a3f0727d9ec5bc90784bee10",
-  "upstream_sync": "not merged: director/plan.py conflict",
+  "upstream_sync": {
+    "commit": "a8f57b8e23c46ee28fdb96796510fa7b4f3b1fbb",
+    "date": "2026-10-07",
+    "resolution": "retain local resolve_video_path and upstream normalize_lora_rows",
+    "checks": [
+      "Python syntax",
+      "plan and cache imports",
+      "four sanitized workflow metadata plans",
+      "local memory scheduling preservation"
+    ],
+    "gpu_generation": "not run"
+  },
   "workflows": [
     {
       "file": "2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_五段复测_先完整一采再二采.json",
@@ -211,7 +222,7 @@
   },
   "files": {
     ".gitattributes": "e802418091bfc2ac3f0710c44adaccf467aa9ef981fd2e2054e579c60d7d93fa",
-    "README.md": "de1cb2869ba9541e699c266b465cf6b203edca0534d4e76918e6c95ca44868b4",
+    "README.md": "32652b97d452eeb0e062a28791a3c8b9bc60eff8b2847f7f73f494ded14f6aae",
     "patches/comfyui-v0.38.2-local-runtime.patch": "ec0111a59f84d36896d78e6aa204d7d222eacef4c2db00b285771668c83746aa",
     "runtime/h3_c1_startup.json": "1d1dc78f7e6c438753756af5fa2cc0844d7bfb0666521ea096de8d9d24e5f1a4",
     "runtime/h3_c1_startup.py": "fa9a882edc342b451311562cd8a20863fdae7e0e1d32b350517e67094a7b75f2",
