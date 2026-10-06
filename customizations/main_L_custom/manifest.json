@@ -1,0 +1,226 @@
+{
+  "proposed_branch": "ComfyUI_MiniMaxH3_Director_Lucas_Custom",
+  "push_remote": "origin",
+  "push_repository": "https://github.com/NeverLookBackAgain/ComfyUI_MiniMaxH3_Director",
+  "director_base": "f0062e0d634022d0078de24577a68d41190bdedd",
+  "core_base": "daeb5e53681e2b10a3f0727d9ec5bc90784bee10",
+  "upstream_sync": "not merged: director/plan.py conflict",
+  "workflows": [
+    {
+      "file": "2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_五段复测_先完整一采再二采.json",
+      "segments": 5,
+      "seed": 683072603085768,
+      "node_types": [
+        "BasicScheduler",
+        "BlockSparseAttention",
+        "CLIPLoader",
+        "CreateVideo",
+        "LoraLoaderBypassModelOnly",
+        "LoraLoaderModelOnly",
+        "MarkdownNote",
+        "MiniMaxH3Director",
+        "MiniMaxH3DirectorFaceRefine",
+        "MiniMaxH3DirectorRefine",
+        "MiniMaxH3DirectorSelfLift",
+        "MiniMaxH3MemoryEfficientSageAttentionPatch",
+        "PathchSageAttentionKJ",
+        "PreviewAny",
+        "SaveVideo",
+        "TESpeedMiniMaxH3",
+        "UNETLoader",
+        "UpscaleModelLoader",
+        "VAELoader"
+      ],
+      "links_checked": 41
+    },
+    {
+      "file": "2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_五段复测_直接双采.json",
+      "segments": 5,
+      "seed": 683072603085768,
+      "node_types": [
+        "BasicScheduler",
+        "BlockSparseAttention",
+        "CLIPLoader",
+        "CreateVideo",
+        "LoraLoaderBypassModelOnly",
+        "LoraLoaderModelOnly",
+        "MarkdownNote",
+        "MiniMaxH3Director",
+        "MiniMaxH3DirectorFaceRefine",
+        "MiniMaxH3DirectorRefine",
+        "MiniMaxH3DirectorSelfLift",
+        "MiniMaxH3MemoryEfficientSageAttentionPatch",
+        "PathchSageAttentionKJ",
+        "PreviewAny",
+        "SaveVideo",
+        "TESpeedMiniMaxH3",
+        "UNETLoader",
+        "UpscaleModelLoader",
+        "VAELoader"
+      ],
+      "links_checked": 41
+    },
+    {
+      "file": "2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_先完整一采再二采.json",
+      "segments": 20,
+      "seed": 683072603085766,
+      "node_types": [
+        "BasicScheduler",
+        "BlockSparseAttention",
+        "CLIPLoader",
+        "CreateVideo",
+        "LoraLoaderBypassModelOnly",
+        "LoraLoaderModelOnly",
+        "MarkdownNote",
+        "MiniMaxH3Director",
+        "MiniMaxH3DirectorFaceRefine",
+        "MiniMaxH3DirectorRefine",
+        "MiniMaxH3DirectorSelfLift",
+        "MiniMaxH3MemoryEfficientSageAttentionPatch",
+        "PathchSageAttentionKJ",
+        "PreviewAny",
+        "SaveVideo",
+        "TESpeedMiniMaxH3",
+        "UNETLoader",
+        "UpscaleModelLoader",
+        "VAELoader"
+      ],
+      "links_checked": 41
+    },
+    {
+      "file": "2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_直接双采.json",
+      "segments": 20,
+      "seed": 683072603085766,
+      "node_types": [
+        "BasicScheduler",
+        "BlockSparseAttention",
+        "CLIPLoader",
+        "CreateVideo",
+        "LoraLoaderBypassModelOnly",
+        "LoraLoaderModelOnly",
+        "MarkdownNote",
+        "MiniMaxH3Director",
+        "MiniMaxH3DirectorFaceRefine",
+        "MiniMaxH3DirectorRefine",
+        "MiniMaxH3DirectorSelfLift",
+        "MiniMaxH3MemoryEfficientSageAttentionPatch",
+        "PathchSageAttentionKJ",
+        "PreviewAny",
+        "SaveVideo",
+        "TESpeedMiniMaxH3",
+        "UNETLoader",
+        "UpscaleModelLoader",
+        "VAELoader"
+      ],
+      "links_checked": 41
+    }
+  ],
+  "acceleration_choice": {
+    "first": "te",
+    "second": "sol+te",
+    "tiling": false,
+    "second_sol_end": 1.0,
+    "source_case": "FULL_TE_R3",
+    "reason": "F1 and R3 were manually accepted; combined full screening passed decoding, 2fps basic checks and representative visual inspection of all five segments. It reduced full task time by 23.1%, while first-TE-only reduced it by 1.6% in screening.",
+    "human_component_reviews": [
+      "F1: same",
+      "R3 versus R0: same, explicitly confirmed in chat"
+    ],
+    "human_combination_review": "pending optional feedback",
+    "quality_feedback_can_change_selection": true,
+    "t8": false,
+    "steps_and_weights_unchanged": true
+  },
+  "benchmarks": {
+    "DIRECT": {
+      "baseline_seconds": [
+        1488.468
+      ],
+      "baseline_n": 1,
+      "optimized_seconds": [
+        1120.929,
+        1114.872,
+        1118.241
+      ],
+      "optimized_n": 3,
+      "baseline_mean": 1488.468,
+      "optimized_mean": 1118.0140000000001,
+      "baseline_range": [
+        1488.468,
+        1488.468
+      ],
+      "optimized_range": [
+        1114.872,
+        1120.929
+      ],
+      "mean_time_reduction_percent": 24.888274386819198,
+      "ranges_separated": true,
+      "individual_time_reduction_percent": [
+        24.692435443691096,
+        25.09936390973807,
+        24.87302380702844
+      ],
+      "historical_direct_baseline_seconds": 1469.327
+    },
+    "STAGE": {
+      "baseline_seconds": [
+        1634.301
+      ],
+      "baseline_n": 1,
+      "optimized_seconds": [
+        1251.9969999999998,
+        1250.3139999999999,
+        1247.253
+      ],
+      "optimized_n": 3,
+      "baseline_mean": 1634.301,
+      "optimized_mean": 1249.8546666666666,
+      "baseline_range": [
+        1634.301,
+        1634.301
+      ],
+      "optimized_range": [
+        1247.253,
+        1251.9969999999998
+      ],
+      "mean_time_reduction_percent": 23.523594082934128,
+      "ranges_separated": true,
+      "individual_time_reduction_percent": [
+        23.392508479160213,
+        23.495488285205735,
+        23.682785484436465
+      ],
+      "historical_direct_baseline_seconds": null
+    }
+  },
+  "dependencies": {
+    "TE-Speed-MiniMaxH3": {
+      "version": "3.5 (local README)",
+      "nodes_pyd_sha256": "723ea936601ed47434c28cf4dfde4a44c19fdfe645ca38c350084bd0373da598",
+      "binary_included": false
+    },
+    "ComfyUI-KJNodes": {
+      "commit": "e8e88f7c88e3f6205b122f5de87e69a09fbce5ac"
+    }
+  },
+  "validation": {
+    "workflow_json": "4 parsed",
+    "workflow_links": "all endpoints exist",
+    "runtime_python": "AST passed",
+    "new_single_segment_guard": "static syntax checked; no new GPU render"
+  },
+  "files": {
+    ".gitattributes": "e802418091bfc2ac3f0710c44adaccf467aa9ef981fd2e2054e579c60d7d93fa",
+    "README.md": "de1cb2869ba9541e699c266b465cf6b203edca0534d4e76918e6c95ca44868b4",
+    "patches/comfyui-v0.38.2-local-runtime.patch": "ec0111a59f84d36896d78e6aa204d7d222eacef4c2db00b285771668c83746aa",
+    "runtime/h3_c1_startup.json": "1d1dc78f7e6c438753756af5fa2cc0844d7bfb0666521ea096de8d9d24e5f1a4",
+    "runtime/h3_c1_startup.py": "fa9a882edc342b451311562cd8a20863fdae7e0e1d32b350517e67094a7b75f2",
+    "workflows/2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_五段复测_先完整一采再二采.json": "b8a3fd5b99ac26a40dfe069cb265a5018c3d6e7c7ad933debf05e1480c953ca9",
+    "workflows/2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_五段复测_直接双采.json": "848388df787865a18cf0ac112d9e5c0986ffbdd03087e4d462521865854be765",
+    "workflows/2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_先完整一采再二采.json": "32c381810fb9da37bfe5b045d5a10b2eaa7fd68979ed053f88cd151ed7cb0f78",
+    "workflows/2026-10-06_MiniMax+H3_导演台_v0.38.2_最终优化_直接双采.json": "cb5e6a9f8ee93fb1b7ba079d2156a2f5bf27b93bf628076bc59ffc4bf4c6b1db",
+    "runtime/h3_experimental_ref_cache/__init__.py": "2b870daae8ea1a6a7803dfdb11005d1361aed64342d32270f2e9df210722d2c4"
+  },
+  "workflows_sanitized": true,
+  "workflow_content": "Empty prompts and input references; original segment timing, sampling settings, node layout and links preserved. Run selection reset to all."
+}

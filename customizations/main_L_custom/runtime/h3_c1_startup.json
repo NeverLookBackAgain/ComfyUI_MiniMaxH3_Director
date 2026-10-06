@@ -1,0 +1,26 @@
+{
+  "environment": {
+    "PYTORCH_CUDA_ALLOC_CONF": "backend:native,expandable_segments:True",
+    "EXPERIMENT_IMAGE_ENCODE_CACHE": "1"
+  },
+  "description": "C1 measured combination, applies only to MiniMaxH3 v0.38.2 instance",
+  "acceleration_plugins": [
+    "TE-Speed-MiniMaxH3"
+  ],
+  "final_acceleration_choice": {
+    "first": "te",
+    "second": "sol+te",
+    "tiling": false,
+    "second_sol_end": 1.0,
+    "source_case": "FULL_TE_R3",
+    "reason": "F1 and R3 were manually accepted; combined full screening passed decoding, 2fps basic checks and representative visual inspection of all five segments. It reduced full task time by 23.1%, while first-TE-only reduced it by 1.6% in screening.",
+    "human_component_reviews": [
+      "F1: same",
+      "R3 versus R0: same, explicitly confirmed in chat"
+    ],
+    "human_combination_review": "pending optional feedback",
+    "quality_feedback_can_change_selection": true,
+    "t8": false,
+    "steps_and_weights_unchanged": true
+  }
+}

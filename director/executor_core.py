@@ -1142,7 +1142,11 @@ def execute_director_plan_core(
 
         # Single / last segment: skip — official H3 also keeps models loaded.
         if clear_vram_between_segments and seg_total > 1:
-            cleanup_segment_vram(enabled=True, unload_models=True)
+            import comfy.model_management as experiment_mm
+            kept_models = [m for m in experiment_mm.current_loaded_models if m.model is None or not type(m.model.model).__name__.startswith("MiniMaxH3TE")]
+            experiment_mm.free_memory(1e32, experiment_mm.get_torch_device(), keep_loaded=kept_models)
+            cleanup_segment_vram(enabled=True, unload_models=False)
+            log.info("Full optimization: selectively released text encoder after conditioning")
 
         def _report_sample_phase(phase: str, value: float) -> None:
             report_director_progress(
@@ -1415,6 +1419,8 @@ def execute_director_plan_core(
             phase="decode", phase_value=0, phase_max=1, **meta,
         )
         t_decode = time.perf_counter()
+        if seg_total > 1:
+            cleanup_segment_vram(enabled=True, unload_models=True)
         decoded, audio_dict = _decode_av_latent(
             samples, vae, audio_vae, decode_audio=decode_audio,
         )
@@ -1626,7 +1632,7 @@ def execute_director_plan_core(
             )
 
         if clear_vram_between_segments and progress_index < seg_total - 1:
-            cleanup_segment_vram(enabled=True)
+            cleanup_segment_vram(enabled=True, unload_models=False)
 
         reports.append(
             f"Segment {ui_idx + 1}/{timeline_seg_total}: {task_hint} "

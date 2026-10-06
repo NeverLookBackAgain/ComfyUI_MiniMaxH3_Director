@@ -1,0 +1,166 @@
+diff --git a/comfy/ldm/minimax/model.py b/comfy/ldm/minimax/model.py
+index c4b7a68a..440d47ef 100644
+--- a/comfy/ldm/minimax/model.py
++++ b/comfy/ldm/minimax/model.py
+@@ -558,6 +558,49 @@ class MiniMaxH3Model(nn.Module):
+             rows.append(r.to(device))
+         return torch.cat(rows, dim=0) if rows else None
+ 
++    def _embed_and_pack(self, video_x, audio_x, context, layout, payload, transformer_options):
++        device = video_x.device
++        dtype = context.dtype
++        img_update = layout.img_update.to(device)
++        audio_update = layout.audio_update.to(device)
++        video_rows = patchify_video(video_x.to(torch.float32), self.patch_size)
++        audio_rows = pack_audio(audio_x.to(torch.float32))
++        cond_video_rows = self._cond_video_rows(payload, device)
++        cond_audio_rows = self._cond_audio_rows(payload, device)
++
++        all_video_rows = video_rows
++        if cond_video_rows is not None:
++            all_video_rows = torch.empty(img_update.shape[0], video_rows.shape[1], dtype=torch.float32, device=device)
++            all_video_rows[~img_update] = cond_video_rows
++            all_video_rows[img_update] = video_rows
++        all_audio_rows = audio_rows
++        if cond_audio_rows is not None:
++            all_audio_rows = torch.empty(audio_update.shape[0], audio_rows.shape[1], dtype=torch.float32, device=device)
++            all_audio_rows[~audio_update] = cond_audio_rows
++            all_audio_rows[audio_update] = audio_rows
++
++        video_embed = self.video_patch_proj(all_video_rows).to(dtype)
++        audio_embed = self.audio_patch_proj(all_audio_rows).to(dtype)
++        text_states = context[0]
++        if text_states.shape[-1] != self.hidden_size:
++            text_states = self.token_refiner(self.condition_proj(text_states),
++                                             transformer_options=transformer_options)
++
++        # segments are contiguous: assemble by slices, embed rows follow segment order
++        h = torch.empty(layout.seq_len, self.hidden_size, dtype=dtype, device=device)
++        voff = aoff = 0
++        for a, b, kind in layout.segments:
++            n = b - a
++            if kind == "text":
++                h[a:b] = text_states
++            elif kind in ("cond", "ref_img", "video"):
++                h[a:b] = video_embed[voff:voff + n]
++                voff += n
++            else:  # ref_audio / audio
++                h[a:b] = audio_embed[aoff:aoff + n]
++                aoff += n
++        return h
++
+     def forward(self, x, timestep, context, transformer_options={}, minimax_payload=None, denoise_mask=None, audio_denoise_mask=None, **kwargs):
+         # the sampler carries the audio as (sigma_v / sigma_a) * x_audio; undo it outside
+         # the wrappers so they and the network see the stream's own latent and velocity
+@@ -693,45 +736,7 @@ class MiniMaxH3Model(nn.Module):
+             else:
+                 mod_segments.append((a, b, row_base + seg_tag[kind]))
+ 
+-        # embed
+-        img_update = layout.img_update.to(device)
+-        audio_update = layout.audio_update.to(device)
+-        video_rows = patchify_video(video_x.to(torch.float32), self.patch_size)
+-        audio_rows = pack_audio(audio_x.to(torch.float32))
+-        cond_video_rows = self._cond_video_rows(payload, device)
+-        cond_audio_rows = self._cond_audio_rows(payload, device)
+-
+-        all_video_rows = video_rows
+-        if cond_video_rows is not None:
+-            all_video_rows = torch.empty(img_update.shape[0], video_rows.shape[1], dtype=torch.float32, device=device)
+-            all_video_rows[~img_update] = cond_video_rows
+-            all_video_rows[img_update] = video_rows
+-        all_audio_rows = audio_rows
+-        if cond_audio_rows is not None:
+-            all_audio_rows = torch.empty(audio_update.shape[0], audio_rows.shape[1], dtype=torch.float32, device=device)
+-            all_audio_rows[~audio_update] = cond_audio_rows
+-            all_audio_rows[audio_update] = audio_rows
+-
+-        video_embed = self.video_patch_proj(all_video_rows).to(dtype)
+-        audio_embed = self.audio_patch_proj(all_audio_rows).to(dtype)
+-        text_states = context[0]
+-        if text_states.shape[-1] != self.hidden_size:
+-            text_states = self.token_refiner(self.condition_proj(text_states),
+-                                             transformer_options=transformer_options)
+-
+-        # segments are contiguous: assemble by slices, embed rows follow segment order
+-        h = torch.empty(layout.seq_len, self.hidden_size, dtype=dtype, device=device)
+-        voff = aoff = 0
+-        for a, b, kind in layout.segments:
+-            n = b - a
+-            if kind == "text":
+-                h[a:b] = text_states
+-            elif kind in ("cond", "ref_img", "video"):
+-                h[a:b] = video_embed[voff:voff + n]
+-                voff += n
+-            else:  # ref_audio / audio
+-                h[a:b] = audio_embed[aoff:aoff + n]
+-                aoff += n
++        h = self._embed_and_pack(video_x, audio_x, context, layout, payload, transformer_options)
+ 
+         t_vals = torch.tensor(unique_t, dtype=torch.float32, device=device)
+         if self.use_adaln_curves:
+diff --git a/comfy/ldm/minimax/vae.py b/comfy/ldm/minimax/vae.py
+index ffb35846..d8c17be4 100644
+--- a/comfy/ldm/minimax/vae.py
++++ b/comfy/ldm/minimax/vae.py
+@@ -269,7 +269,8 @@ class FeedForward(nn.Module):
+ 
+     def forward(self, x, pre_norm, residual, residual_scale):
+         # norm, gated silu and residual addcmul fold into the INT8 kernels
+-        h = comfy.ops.linear_input_act(self.w1, x, "rms_norm", pre_norm.weight, pre_norm.eps)
++        with comfy.ops.CastBiasWeightContext(pre_norm if pre_norm.weight is not None else None, x, offloadable=True) as (weight, bias):
++            h = comfy.ops.linear_input_act(self.w1, x, "rms_norm", weight, pre_norm.eps)
+         return comfy.ops.linear_input_act(
+             self.w2, h, "swiglu", residual=residual, residual_scale=residual_scale)
+ 
+@@ -290,7 +291,8 @@ class Attention(nn.Module):
+     def forward(self, x, rotary_pos_emb, pre_norm, residual, residual_scale):
+         batch_size, seq_len, _ = x.shape
+ 
+-        qkv = comfy.ops.linear_input_act(self.to_qkv, x, "rms_norm", pre_norm.weight, pre_norm.eps)
++        with comfy.ops.CastBiasWeightContext(pre_norm if pre_norm.weight is not None else None, x, offloadable=True) as (weight, bias):
++            qkv = comfy.ops.linear_input_act(self.to_qkv, x, "rms_norm", weight, pre_norm.eps)
+         qkv = qkv.view(batch_size, seq_len, -1, 3 * self.dim_head)
+         query, key, value = torch.chunk(qkv, 3, dim=-1)
+ 
+@@ -425,6 +427,7 @@ class MiniMaxH3VideoVAE(nn.Module):
+         tile_size=256,
+         tile_overlap_min=64,
+         tiling=True,
++        num_layers=36,
+         operations=ops,
+     ):
+         super().__init__()
+@@ -461,6 +464,7 @@ class MiniMaxH3VideoVAE(nn.Module):
+             patch_size_t=self.vae_ratio_t,
+             in_channels=z_channels,
+             out_channels=out_ch,
++            num_layers=num_layers,
+             operations=operations,
+         )
+ 
+diff --git a/comfy/sd.py b/comfy/sd.py
+index 73a35aaa..aa8179ae 100644
+--- a/comfy/sd.py
++++ b/comfy/sd.py
+@@ -1031,7 +1031,8 @@ class VAE:
+                 minimax_quant = comfy.utils.detect_layer_quantization(sd, "")
+                 if minimax_quant is not None:  # int8+convrot quantized decoder
+                     minimax_ops = comfy.ops.mixed_precision_ops(minimax_quant, dtype if dtype is not None else torch.float16)
+-                self.first_stage_model = comfy.ldm.minimax.vae.MiniMaxH3VideoVAE(operations=minimax_ops)
++                minimax_decoder_layers = sum(1 for k in sd if k.startswith("decoder.transformer_blocks.") and k.endswith(".scale1"))
++                self.first_stage_model = comfy.ldm.minimax.vae.MiniMaxH3VideoVAE(operations=minimax_ops, num_layers=minimax_decoder_layers)
+                 self.latent_channels = 24
+                 self.latent_dim = 3
+                 # frames 17k+5 <-> latents 5k+2, 16x spatial
+diff --git a/main.py b/main.py
+index af82e310..38e69b1f 100644
+--- a/main.py
++++ b/main.py
+@@ -1,3 +1,6 @@
++import h3_c1_startup as _h3_c1_startup
++_h3_c1_startup.apply()
++
+ import comfy.options
+ comfy.options.enable_args_parsing()
+ 
