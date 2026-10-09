@@ -232,21 +232,22 @@ class MiniMaxH3Director:
         return True
 
     @classmethod
-    def IS_CHANGED(cls, unique_id=None, **kwargs):
+    def IS_CHANGED(cls, unique_id=None, cache_name=None, **kwargs):
         # Do not return NaN: that would re-run every Director queue even when
         # confirm_first_pass is off. Linked Refine is None here, so fingerprint
         # the .pre cache files that only the confirmation hold writes.
         import json
+        from ..director.segment_cache import resolve_segment_cache_key
+        cache_key = resolve_segment_cache_key(cache_name, unique_id)
         try:
             config = json.loads(kwargs.get("timeline_data") or "{}").get("lucasExecution", {})
         except (TypeError, ValueError):
             config = {}
         if config.get("enabled"):
             from ..director.segment_cache import execution_cache_disk_signature
-            return execution_cache_disk_signature(unique_id)
+            return execution_cache_disk_signature(cache_key)
         from ..director.segment_cache import first_pass_cache_disk_signature
-
-        return first_pass_cache_disk_signature(unique_id)
+        return first_pass_cache_disk_signature(cache_key)
 
     RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "IMAGE", "STRING", "IMAGE", "IMAGE")
     RETURN_NAMES = (
@@ -313,6 +314,7 @@ class MiniMaxH3Director:
         cache_frames_codec="raw",
         export_source_images=False,
         export_pre_face_refine=False,
+        cache_name="",
         **kwargs,
     ):
         del kwargs
@@ -342,6 +344,7 @@ class MiniMaxH3Director:
                 execute_director_plan_core(
                     plan,
                     node_id=unique_id,
+                    cache_name=cache_name,
                     model=model,
                     vae=video_vae,
                     audio_vae=audio_vae,

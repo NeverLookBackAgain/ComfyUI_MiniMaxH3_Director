@@ -87,15 +87,17 @@ class StreamingFrames:
             del frame, left
 
 
-def merge_first_to_video(plan, *, node_id, vae, audio_vae):
+def merge_first_to_video(plan, *, node_id, vae, audio_vae, progress_node_id=None):
+    progress_node_id = node_id if progress_node_id is None else progress_node_id
     from .progress import report_director_finish
     result, report, counts = _export_cache_stage(plan, node_id=node_id, vae=vae,
         audio_vae=audio_vae, stage="first", first_face=True)
-    report_director_finish(node_id, len(counts))
+    report_director_finish(progress_node_id, len(counts))
     return result, [], [], report, counts, result, [], False, None, []
 
 
-def merge_refine_to_video(plan, *, node_id, vae, audio_vae):
+def merge_refine_to_video(plan, *, node_id, vae, audio_vae, progress_node_id=None):
+    progress_node_id = node_id if progress_node_id is None else progress_node_id
     from .execution_modes import output_first
     from .progress import report_director_finish
     import gc
@@ -114,7 +116,7 @@ def merge_refine_to_video(plan, *, node_id, vae, audio_vae):
         report += "\n\n同时导出原始一采（与二采顺序执行）：\n" + first_report
         del first
         gc.collect()
-    report_director_finish(node_id, len(counts))
+    report_director_finish(progress_node_id, len(counts))
     return result, [], [], report, counts, result, [], False, None, []
 
 

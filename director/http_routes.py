@@ -526,6 +526,14 @@ async def minimax_first_pass_cache_status(request):
     if not re.fullmatch(r"\d+", node_id):
         return web.Response(status=400, text="Invalid Director node id.")
 
+    # Same key the executor uses: <cache_name>_<node_id> when 缓存文件夹名 is
+    # filled, node id otherwise. Never trust the raw string as a path segment.
+    from .segment_cache import resolve_segment_cache_key
+
+    cache_key = resolve_segment_cache_key(body.get("cache_name"), node_id)
+    if not cache_key:
+        return web.Response(status=400, text="Invalid segment cache name.")
+
     timeline_data = body.get("timeline_data") or ""
     if isinstance(timeline_data, dict):
         timeline_data = json.dumps(timeline_data, ensure_ascii=False)
@@ -579,9 +587,9 @@ async def minimax_first_pass_cache_status(request):
         if plan.face_refine and (body.get("face_refine") or {}).get("has_sigmas_tensor"):
             plan.face_refine["has_sigmas_tensor"] = True
         configure_execution(plan)
-        stamp_cached_seeds(node_id, plan)
-        check = preflight(plan, node_id, metadata_only=True)
-        result = inspect_first_pass_cache(node_id, plan, external_groups=witness)
+        stamp_cached_seeds(cache_key, plan)
+        check = preflight(plan, cache_key, metadata_only=True)
+        result = inspect_first_pass_cache(cache_key, plan, external_groups=witness)
         if check:
             result["execution"] = check
         return web.json_response(result)
@@ -609,9 +617,13 @@ async def minimax_clear_segment_cache(request):
         return web.Response(status=400, text="kind must be first_pass, final or all.")
 
     try:
-        from .segment_cache import clear_segment_cache
+        from .segment_cache import clear_segment_cache, resolve_segment_cache_key
 
-        removed = clear_segment_cache(node_id, kind=kind)
+        cache_key = resolve_segment_cache_key(body.get("cache_name"), node_id)
+        if not cache_key:
+            return web.Response(status=400, text="Invalid segment cache name.")
+
+        removed = clear_segment_cache(cache_key, kind=kind)
         return web.json_response({"removed": removed, "kind": kind})
     except Exception as exc:
         log.warning("MiniMax H3 Director clear segment cache failed: %s", exc)

@@ -290,4 +290,86 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(refine_seed_for({'seed_mode':'offset'},10,2),13)
         self.assertEqual(refine_seed_for({'seed_mode':'independent','seed':100},10,2),102)
 
+    def run_named(self, plan, name="project_A"):
+        return core.execute_director_plan_core(plan, node_id="12", cache_name=name,
+            model=None, vae=None, audio_vae=None, clip=None, seed=99,
+            clear_vram_between_segments=False)
+
+    def test_cache_name_sanitization_and_legacy_key(self):
+        self.assertEqual(cache.resolve_segment_cache_key("", "12"), "12")
+        self.assertEqual(cache.resolve_segment_cache_key("电影A", "12"), "电影A_12")
+        self.assertNotEqual(cache.resolve_segment_cache_key("A", "12"), cache.resolve_segment_cache_key("A", "13"))
+        self.assertEqual(cache.normalize_cache_name("CON"), "_CON")
+        for name in ("../../outside", "..\\..\\outside", "a:b/c", "NUL", "x" * 100):
+            key = cache.resolve_segment_cache_key(name, "12")
+            root = cache._cache_dir(key).resolve()
+            self.assertTrue(root.is_relative_to(Path(self.tmp.name).resolve() / "minimax_seg_cache"))
+        self.assertEqual(len(cache.normalize_cache_name("x" * 100)), 64)
+        for key in ("", "..", "../outside", "x/y", "x\\y"):
+            with self.assertRaises(ValueError): cache._cache_dir(key)
+
+    def test_named_cache_refine_and_selected_merges_keep_progress_node(self):
+        from lucas_tests.director import progress
+        p = self.plan("first")
+        self.run_named(p)
+        root = Path(self.tmp.name) / "minimax_seg_cache"
+        self.assertTrue((root / "project_A_12/seg_0000.pre.av.pt").is_file())
+        self.assertFalse((root / "12").exists())
+        self.assertTrue(all(call.args[0] == "12" for call in core.report_director_progress.call_args_list))
+        self.events.clear()
+        p = self.plan("refine")
+        self.run_named(p)
+        self.assertFalse(any(e[0] == "first" for e in self.events))
+        self.assertEqual(len([e for e in self.events if e[0] == "refine"]), 2)
+        for mode in ("merge_first", "merge_refine"):
+            q = self.plan(mode, export=False)
+            q.run_indices = frozenset({1})
+            self.events.clear()
+            with patch.object(progress, "report_director_finish") as finish:
+                out = self.run_named(q)
+            self.assertEqual(out[0].frame_count, 5)
+            self.assertEqual(self.events, [])
+            finish.assert_called_once_with("12", 1)
+
+    def test_named_clear_preserves_other_workflow_and_legacy_cache(self):
+        p = self.plan("first")
+        for name in ("project_A", "project_B", ""):
+            self.run_named(self.plan("first"), name)
+        for name in ("project_A", "project_B", ""):
+            key = cache.resolve_segment_cache_key(name, "12")
+            self.assertTrue(cache.first_pass_cache_disk_signature(key))
+        self.assertGreater(cache.clear_segment_cache(cache.resolve_segment_cache_key("project_A", "12"), kind="all"), 0)
+        self.assertFalse(cache.first_pass_cache_disk_signature("project_A_12"))
+        self.assertTrue(cache.first_pass_cache_disk_signature("project_B_12"))
+        self.assertTrue(cache.first_pass_cache_disk_signature("12"))
+
+    def test_named_node_change_signature_watches_named_cache(self):
+        import json
+        from lucas_tests.nodes.director import MiniMaxH3Director
+        timeline = json.dumps({"lucasExecution": {"enabled": True}})
+        before = MiniMaxH3Director.IS_CHANGED(unique_id="12", cache_name="project_A", timeline_data=timeline)
+        self.run_named(self.plan("first"))
+        after = MiniMaxH3Director.IS_CHANGED(unique_id="12", cache_name="project_A", timeline_data=timeline)
+        self.assertNotEqual(before, after)
+        self.assertEqual(MiniMaxH3Director.IS_CHANGED(unique_id="12", cache_name="project_B", timeline_data=timeline), "")
+        self.assertEqual(MiniMaxH3Director.IS_CHANGED(unique_id="12", cache_name="project_A"), cache.first_pass_cache_disk_signature("project_A_12"))
+
+    def test_named_http_status_and_clear_resolve_same_key(self):
+        import asyncio, json
+        from lucas_tests.director import http_routes
+        p = self.plan("first")
+        self.run_named(p)
+        class Request:
+            async def json(self):
+                return {"node_id": "12", "cache_name": "project_A", "timeline_data": p.raw, "kind": "all", "seed": 99, "sampler": "res_multistep", "scheduler": "simple"}
+        with patch("lucas_tests.director.plan.build_director_plan", return_value=p):
+            response = asyncio.run(http_routes.minimax_first_pass_cache_status(Request()))
+        self.assertEqual(response.status, 200, response.text)
+        payload = json.loads(response.text)
+        self.assertTrue(all(row["first_valid"] for row in payload["execution"]["segments"]))
+        response = asyncio.run(http_routes.minimax_clear_segment_cache(Request()))
+        self.assertEqual(response.status, 200, response.text)
+        self.assertGreater(json.loads(response.text)["removed"], 0)
+        self.assertFalse(cache.first_pass_cache_disk_signature("project_A_12"))
+
 if __name__=='__main__': unittest.main(verbosity=2)
